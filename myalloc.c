@@ -10,6 +10,8 @@
 #define MIN_GROW_BYTES  (64UL * 1024UL)
 #define MIN_PAYLOAD     16UL
 #define BLOCK_MAGIC     0x5A110C42
+/* Largest request that cannot overflow align_up(), HDR + size or the intptr_t passed to sbrk() */
+#define MAX_REQUEST     ((size_t)INTPTR_MAX - 64UL * 1024UL)
 
 typedef struct block {
     size_t size;          /* payload size in bytes */
@@ -151,7 +153,7 @@ static void coalesce(void) {
 }
 
 void *my_malloc(size_t size) {
-    if (size == 0) {
+    if (size == 0 || size > MAX_REQUEST) {
         return NULL;
     }
 
@@ -226,6 +228,10 @@ void *my_realloc(void *ptr, size_t size) {
     if (size == 0) {
         my_free(ptr);
         return NULL;
+    }
+
+    if (size > MAX_REQUEST) {
+        return NULL; /* too large; the original block is left untouched */
     }
 
     block_t *blk = header(ptr);
