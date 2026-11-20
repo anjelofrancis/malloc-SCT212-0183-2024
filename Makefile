@@ -7,3 +7,6 @@ test: myalloc.c test_myalloc.c myalloc.h
 
 clean:
 	rm -f test_myalloc *.o
+
+bench: bench.c myalloc.c myalloc.h
+	$(CC) $(CFLAGS) -O2 -o bench bench.c myalloc.c
