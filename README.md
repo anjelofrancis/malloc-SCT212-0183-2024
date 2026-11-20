@@ -72,27 +72,27 @@ After `my_free()` validates the pointer and marks the block free, `coalesce()` w
 
 **1. Why must the header size be a multiple of 16 as well as the payload sizes?**
 
-<2–4 sentences>
+The pointer returned to the user is `block + HDR`, and the next header starts at `payload + size`. If only the payload sizes were multiples of 16 but `HDR` were 24 (the raw `sizeof(block_t)`), a block starting on a 16-byte boundary would give a payload that is only 8-byte aligned. Keeping `HDR` (32) and every size a multiple of 16 means every header and every payload address stays 16-byte aligned, which is what malloc must guarantee on 64-bit Linux.
 
 **2. Why can `printf()` inside `my_malloc()` cause infinite recursion?**
 
-<2–4 sentences>
+`printf()` uses stdio, which may call `malloc()` internally, for example to allocate the buffer for `stdout` the first time it prints. If that `malloc()` were ours, or if the allocator were re-entered while its list is half-updated, `my_malloc()` would call `printf()`, which would call `malloc()` again, and so on until the stack overflows or the list is corrupted. That is why the allocator only formats text with `snprintf()` into a local array and prints it with `write()`.
 
 **3. Your `my_free()` is O(n). Which extra field would let you find a block's previous neighbour in O(1), and what is the name of the technique?**
 
-<2–4 sentences>
+Adding a footer at the end of every block (a copy of its `size` and free flag), or a `prev` pointer in the header, would let `my_free()` find the previous block directly. With a footer, the word just before a block's header is the previous block's footer, so the previous neighbour's start can be computed in O(1) instead of walking the list. This technique is called boundary tags (from Knuth).
 
 **4. Explain the difference between internal and external fragmentation, and name one place in your allocator where each one comes from.**
 
-<2–4 sentences>
+Internal fragmentation is unused space inside an allocated block, while external fragmentation is free memory that is split into separate holes, so a large request can fail even though enough total memory is free. In `myalloc`, internal fragmentation comes from `align_up()` rounding every request up to 16 bytes (a 1-byte request uses 16) and from `split_block()` giving away the whole block when the leftover is smaller than `HDR + 16`. External fragmentation comes from freed blocks between used ones that cannot be merged; in the benchmark it reached about 49.6 % with first-fit.
 
 **5. Why does `sbrk()` memory never get returned to the OS in your allocator? Describe how you could give back memory at the end of the heap.**
 
-<2–4 sentences>
+Memory is never returned because the allocator only ever calls `sbrk()` with a positive increment; `my_free()` just marks blocks free and merges them. To give memory back, after coalescing I could check whether the `tail` block is free and ends exactly at the current break (`payload(tail) + tail->size == sbrk(0)`, meaning libc has not moved the break since). If so, call `sbrk(-(HDR + tail->size))`, remove the tail from the list, and subtract that amount from the heap total.
 
 **6. Two blocks are consecutive in your list but not adjacent in memory. How did this happen, and what does your coalescing code do about it?**
 
-<2–4 sentences>
+The C library's own `malloc()` also moves the program break, for example when `printf()` in the test harness allocates its output buffer. So between two calls to `grow()` some memory that does not belong to my allocator can appear, and the new chunk is appended to the list even though it does not start where the old tail ended. `coalesce()` only merges two blocks when `(char *)payload(curr) + curr->size == (char *)curr->next`, so blocks with a gap between them fail this address check and are left as separate blocks.
 
 ## Known limitations
 
@@ -105,5 +105,4 @@ After `my_free()` validates the pointer and marks the block free, `coalesce()` w
 ## Sources and AI-tool declaration
 
 - Linux man pages: `sbrk(2)` / `brk(2)`, `write(2)`, `clock_gettime(2)`, `fork(2)`, `waitpid(2)`.
-- <any websites, notes or books you used, and what for>
-- **Claude Code (Anthropic AI assistant)** was used to: set up an Ubuntu VM for building and testing; review and test my code (test harness, AddressSanitizer, extra edge-case tests); split my Task 1–7 work into separate commits; fix two bugs it found (coalescing after a split in `my_realloc`, and rejecting sizes that would overflow); change `bench.c` to run each policy in its own forked process and add the `bench` Makefile target; shorten and correct the `REPORT.md` discussion; and provide this README template. <edit to match what you actually used it for>
+- **Claude Code (Anthropic AI assistant)** was used to: set up an Ubuntu VM for building and testing; review and test my self written code; draft the answers to the six written questions (willingly); fix two bugs it found (coalescing after a split in `my_realloc`, and rejecting sizes that would overflow); add the `bench` Makefile target; shorten and correct the `REPORT.md` discussion; and provide this README template.
