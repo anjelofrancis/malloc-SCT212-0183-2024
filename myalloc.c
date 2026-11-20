@@ -66,6 +66,7 @@ static block_t *grow(size_t need) {
     if (prev == (void *)-1) {
         return NULL;
     }
+
     total_heap_bytes += total_inc;
 
     block_t *blk = (block_t *)((char *)prev + pad);
@@ -85,6 +86,23 @@ static block_t *grow(size_t need) {
     return blk;
 }
 
+/* Task 4: Split block if remainder can hold a header + 16-byte payload */
+static void split_block(block_t *blk, size_t need) {
+    if (blk->size >= need + HDR + MIN_PAYLOAD) {
+        block_t *rem = (block_t *)((char *)payload(blk) + need);
+        rem->size = blk->size - need - HDR;
+        rem->next = blk->next;
+        rem->free = 1;
+        rem->magic = BLOCK_MAGIC;
+
+        blk->size = need;
+        blk->next = rem;
+        if (tail == blk) {
+            tail = rem;
+        }
+    }
+}
+
 /* Task 3: First-fit search */
 static block_t *find_fit(size_t need) {
     for (block_t *curr = head; curr != NULL; curr = curr->next) {
@@ -99,6 +117,7 @@ void *my_malloc(size_t size) {
     if (size == 0) {
         return NULL;
     }
+
     size_t need = align_up(size);
     block_t *blk = find_fit(need);
     if (blk == NULL) {
@@ -107,6 +126,8 @@ void *my_malloc(size_t size) {
             return NULL;
         }
     }
+
+    split_block(blk, need);
     blk->free = 0;
     return payload(blk);
 }
