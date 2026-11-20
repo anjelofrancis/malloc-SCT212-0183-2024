@@ -35,6 +35,14 @@ static inline block_t *header(void *ptr) {
 static block_t *head = NULL;
 static block_t *tail = NULL;
 static size_t total_heap_bytes = 0;
+static fit_policy_t current_policy = FIT_FIRST;
+
+static void write_msg(int fd, const char *msg) {
+    if (msg != NULL) {
+        ssize_t r = write(fd, msg, strlen(msg));
+        (void)r;
+    }
+}
 
 /* Task 2: Request raw memory from the OS via sbrk() */
 static block_t *grow(size_t need) {
@@ -75,4 +83,65 @@ static block_t *grow(size_t need) {
     }
 
     return blk;
+}
+
+/* Task 3: First-fit search */
+static block_t *find_fit(size_t need) {
+    for (block_t *curr = head; curr != NULL; curr = curr->next) {
+        if (curr->free && curr->size >= need) {
+            return curr;
+        }
+    }
+    return NULL;
+}
+
+void *my_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+    size_t need = align_up(size);
+    block_t *blk = find_fit(need);
+    if (blk == NULL) {
+        blk = grow(need);
+        if (blk == NULL) {
+            return NULL;
+        }
+    }
+    blk->free = 0;
+    return payload(blk);
+}
+
+/* Temporary stubs for Tasks 4–7 */
+void my_free(void *ptr) {
+    if (ptr == NULL) return;
+    block_t *blk = header(ptr);
+    if (blk->magic == BLOCK_MAGIC) {
+        blk->free = 1;
+    }
+}
+
+void *my_calloc(size_t nmemb, size_t size) {
+    (void)nmemb; (void)size;
+    return NULL;
+}
+
+void *my_realloc(void *ptr, size_t size) {
+    (void)ptr; (void)size;
+    return NULL;
+}
+
+void heap_stats(heap_stats_t *out) {
+    if (out != NULL) memset(out, 0, sizeof(*out));
+}
+
+void heap_dump(void) {
+    write_msg(STDOUT_FILENO, "heap_dump stub\n");
+}
+
+void set_policy(fit_policy_t p) {
+    current_policy = p;
+}
+
+int heap_check(void) {
+    return 1;
 }
