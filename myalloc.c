@@ -188,13 +188,71 @@ void my_free(void *ptr) {
 }
 
 void *my_calloc(size_t nmemb, size_t size) {
-    (void)nmemb; (void)size;
-    return NULL;
+    if (nmemb == 0 || size == 0) {
+        return NULL;
+    }
+    if (size > SIZE_MAX / nmemb) {
+        return NULL;
+    }
+
+    size_t total = nmemb * size;
+    void *ptr = my_malloc(total);
+    if (ptr != NULL) {
+        memset(ptr, 0, total);
+    }
+    return ptr;
 }
 
 void *my_realloc(void *ptr, size_t size) {
-    (void)ptr; (void)size;
-    return NULL;
+    if (ptr == NULL) {
+        return my_malloc(size);
+    }
+    if (size == 0) {
+        my_free(ptr);
+        return NULL;
+    }
+
+    block_t *blk = header(ptr);
+    if (blk->magic != BLOCK_MAGIC || blk->free) {
+        write_msg(STDERR_FILENO, "my_realloc: invalid pointer\n");
+        return NULL;
+    }
+
+    size_t need = align_up(size);
+
+    /* Case 1: Current block already fits */
+    if (need <= blk->size) {
+        split_block(blk, need);
+        return ptr;
+    }
+
+    /* Case 2: Next block is free, physically adjacent, and big enough */
+    if (blk->next != NULL && blk->next->free) {
+        char *blk_end = (char *)payload(blk) + blk->size;
+        if (blk_end == (char *)blk->next &&
+            blk->size + HDR + blk->next->size >= need) {
+            block_t *victim = blk->next;
+            blk->size += HDR + victim->size;
+            blk->next = victim->next;
+            victim->magic = 0;
+            if (tail == victim) {
+                tail = blk;
+            }
+            split_block(blk, need);
+            return ptr;
+        }
+    }
+
+    /* Case 3: Allocate elsewhere, copy, and free old block */
+    void *new_ptr = my_malloc(size);
+    if (new_ptr == NULL) {
+        return NULL;
+    }
+
+    size_t copy_bytes = (blk->size < size) ? blk->size : size;
+    memcpy(new_ptr, ptr, copy_bytes);
+    my_free(ptr);
+    return new_ptr;
 }
 
 void heap_stats(heap_stats_t *out) {
