@@ -103,14 +103,30 @@ static void split_block(block_t *blk, size_t need) {
     }
 }
 
-/* Task 3: First-fit search */
+/* Task 3 & Task 7: Search free list according to active placement policy */
 static block_t *find_fit(size_t need) {
+    if (current_policy == FIT_FIRST) {
+        for (block_t *curr = head; curr != NULL; curr = curr->next) {
+            if (curr->free && curr->size >= need) {
+                return curr;
+            }
+        }
+        return NULL;
+    }
+
+    /* FIT_BEST: find smallest free block with size >= need */
+    block_t *best = NULL;
     for (block_t *curr = head; curr != NULL; curr = curr->next) {
         if (curr->free && curr->size >= need) {
-            return curr;
+            if (best == NULL || curr->size < best->size) {
+                best = curr;
+                if (best->size == need) {
+                    break; /* exact fit */
+                }
+            }
         }
     }
-    return NULL;
+    return best;
 }
 
 /* Task 5: Merge physically adjacent free blocks */
@@ -256,11 +272,40 @@ void *my_realloc(void *ptr, size_t size) {
 }
 
 void heap_stats(heap_stats_t *out) {
-    if (out != NULL) memset(out, 0, sizeof(*out));
+    if (out == NULL) {
+        return;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->heap_bytes = total_heap_bytes;
+
+    for (block_t *curr = head; curr != NULL; curr = curr->next) {
+        out->blocks++;
+        if (curr->free) {
+            out->free_blocks++;
+            out->free_bytes += curr->size;
+            if (curr->size > out->largest_free) {
+                out->largest_free = curr->size;
+            }
+        } else {
+            out->used_bytes += curr->size;
+        }
+    }
 }
 
 void heap_dump(void) {
-    write_msg(STDOUT_FILENO, "heap_dump stub\n");
+    char buf[128];
+    size_t idx = 0;
+    for (block_t *curr = head; curr != NULL; curr = curr->next, idx++) {
+        int n = snprintf(buf, sizeof(buf), "[%zu] %p size=%zu %s\n",
+                         idx, (void *)curr, curr->size,
+                         curr->free ? "FREE" : "USED");
+        if (n > 0) {
+            size_t len = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf) - 1;
+            ssize_t r = write(STDOUT_FILENO, buf, len);
+            (void)r;
+        }
+    }
 }
 
 void set_policy(fit_policy_t p) {
@@ -268,5 +313,24 @@ void set_policy(fit_policy_t p) {
 }
 
 int heap_check(void) {
+    block_t *prev = NULL;
+    for (block_t *curr = head; curr != NULL; curr = curr->next) {
+        if (curr->magic != BLOCK_MAGIC) {
+            return 0;
+        }
+        if (((uintptr_t)payload(curr) % ALIGNMENT) != 0) {
+            return 0;
+        }
+        if (prev != NULL && (uintptr_t)curr <= (uintptr_t)prev) {
+            return 0;
+        }
+        if (prev != NULL && prev->free && curr->free) {
+            char *prev_end = (char *)payload(prev) + prev->size;
+            if (prev_end == (char *)curr) {
+                return 0;
+            }
+        }
+        prev = curr;
+    }
     return 1;
 }
