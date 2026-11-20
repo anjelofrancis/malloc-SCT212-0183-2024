@@ -239,6 +239,7 @@ void *my_realloc(void *ptr, size_t size) {
     /* Case 1: Current block already fits */
     if (need <= blk->size) {
         split_block(blk, need);
+        coalesce(); /* the split-off tail may border a free block */
         return ptr;
     }
 
@@ -255,6 +256,7 @@ void *my_realloc(void *ptr, size_t size) {
                 tail = blk;
             }
             split_block(blk, need);
+            coalesce();
             return ptr;
         }
     }
