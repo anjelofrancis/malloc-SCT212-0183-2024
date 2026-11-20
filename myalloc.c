@@ -113,6 +113,27 @@ static block_t *find_fit(size_t need) {
     return NULL;
 }
 
+/* Task 5: Merge physically adjacent free blocks */
+static void coalesce(void) {
+    block_t *curr = head;
+    while (curr != NULL && curr->next != NULL) {
+        if (curr->free && curr->next->free) {
+            char *curr_end = (char *)payload(curr) + curr->size;
+            if (curr_end == (char *)curr->next) {
+                block_t *victim = curr->next;
+                curr->size += HDR + victim->size;
+                curr->next = victim->next;
+                victim->magic = 0;
+                if (tail == victim) {
+                    tail = curr;
+                }
+                continue; /* check if new curr->next is also free and adjacent */
+            }
+        }
+        curr = curr->next;
+    }
+}
+
 void *my_malloc(size_t size) {
     if (size == 0) {
         return NULL;
@@ -125,6 +146,12 @@ void *my_malloc(size_t size) {
         if (blk == NULL) {
             return NULL;
         }
+        /* Coalesce in case the new chunk happens to be adjacent to a free tail */
+        coalesce();
+        blk = find_fit(need);
+        if (blk == NULL) {
+            return NULL;
+        }
     }
 
     split_block(blk, need);
@@ -132,13 +159,32 @@ void *my_malloc(size_t size) {
     return payload(blk);
 }
 
-/* Temporary stubs for Tasks 4–7 */
 void my_free(void *ptr) {
-    if (ptr == NULL) return;
-    block_t *blk = header(ptr);
-    if (blk->magic == BLOCK_MAGIC) {
-        blk->free = 1;
+    if (ptr == NULL) {
+        return;
     }
+
+    /* Verify ptr corresponds to a real block in our list */
+    block_t *found = NULL;
+    for (block_t *curr = head; curr != NULL; curr = curr->next) {
+        if (payload(curr) == ptr) {
+            found = curr;
+            break;
+        }
+    }
+
+    if (found == NULL || found->magic != BLOCK_MAGIC) {
+        write_msg(STDERR_FILENO, "my_free: invalid pointer\n");
+        return;
+    }
+
+    if (found->free) {
+        write_msg(STDERR_FILENO, "my_free: double free detected\n");
+        return;
+    }
+
+    found->free = 1;
+    coalesce();
 }
 
 void *my_calloc(size_t nmemb, size_t size) {
